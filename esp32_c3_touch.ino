@@ -30,7 +30,7 @@ XPT2046_Touchscreen ts(TOUCH_CS, TOUCH_IRQ);
 // ----------------------------
 // Touch screen calibration values (may need adjustment for your specific module)
 #define TS_MINX 200
-#define TS_MINY 200
+#define TS_MINY 300 // Adjusted to fix offset
 #define TS_MAXX 3800
 #define TS_MAXY 3800
 
@@ -40,21 +40,39 @@ XPT2046_Touchscreen ts(TOUCH_CS, TOUCH_IRQ);
 uint16_t currentBgColor = ILI9341_BLACK;
 uint16_t paintColor = ILI9341_BLUE;
 
+// Palette Colors
+uint16_t palette[] = {ILI9341_RED, ILI9341_GREEN, ILI9341_BLUE, ILI9341_YELLOW, ILI9341_CYAN, ILI9341_MAGENTA, ILI9341_BLACK};
+int paletteCount = 7;
+
 void drawUI() {
   // Top Bar Background
   tft.fillRect(0, 0, 320, 40, ILI9341_DARKGREY);
   
-  // Clear Button (Left)
-  tft.drawRect(0, 0, 160, 40, ILI9341_WHITE);
-  tft.setCursor(50, 12);
+  // Clear Button (Left, 50px)
+  tft.drawRect(0, 0, 50, 40, ILI9341_WHITE);
+  tft.setCursor(8, 12);
   tft.setTextColor(ILI9341_WHITE);
-  tft.setTextSize(2);
-  tft.println("Clear");
+  tft.setTextSize(1);
+  tft.println("CLR");
 
-  // BG Toggle Button (Right)
-  tft.drawRect(160, 0, 160, 40, ILI9341_WHITE);
-  tft.setCursor(200, 12);
-  tft.println(currentBgColor == ILI9341_BLACK ? "BG: Wht" : "BG: Blk");
+  // Color Palette (Remaining 270px)
+  int startX = 50;
+  int boxWidth = (320 - 50) / paletteCount;
+  
+  for (int i = 0; i < paletteCount; i++) {
+    uint16_t color = palette[i];
+    // If eraser (last item), use current BG color for visual, but logic uses palette color
+    if (i == paletteCount - 1) color = currentBgColor; 
+    
+    tft.fillRect(startX + (i * boxWidth), 0, boxWidth, 40, color);
+    tft.drawRect(startX + (i * boxWidth), 0, boxWidth, 40, ILI9341_WHITE);
+    
+    // Highlight selected color
+    if (palette[i] == paintColor) {
+       tft.drawRect(startX + (i * boxWidth) + 2, 2, boxWidth - 4, 36, ILI9341_WHITE);
+       tft.drawRect(startX + (i * boxWidth) + 3, 3, boxWidth - 6, 34, ILI9341_BLACK);
+    }
+  }
 
   // Drawing Area Border
   tft.drawRect(0, 40, 320, 200, ILI9341_WHITE);
@@ -74,6 +92,9 @@ void setup() {
   tft.setRotation(1); // Landscape
   tft.fillScreen(currentBgColor);
   
+  // Update Eraser color in palette to match BG
+  palette[paletteCount - 1] = currentBgColor;
+  
   drawUI();
 
   // Initialize Touch
@@ -89,42 +110,35 @@ void loop() {
   if (ts.touched()) {
     TS_Point p = ts.getPoint();
     
-    // Pressure check to reduce noise
-    if (p.z < 200) return;
-
-    // Debug Raw Values
-    Serial.print("Raw X: "); Serial.print(p.x);
-    Serial.print(" Raw Y: "); Serial.print(p.y);
-    Serial.print(" Z: "); Serial.println(p.z);
+    // Pressure check to reduce noise (High Sensitivity)
+    if (p.z < 10) return;
 
     // Map touch coordinates to screen coordinates
     // Landscape Mapping: Swap X and Y
-    // Note: Depending on your specific panel, you might need to invert MIN/MAX for one or both.
-    // Here we assume:
-    // Screen X (0-320) <-> Raw Y (200-3800)
-    // Screen Y (0-240) <-> Raw X (3800-200) [Inverted]
     int16_t x = map(p.y, TS_MINY, TS_MAXY, 0, 320);
     int16_t y = map(p.x, TS_MAXX, TS_MINX, 0, 240);
-
-    Serial.print("Mapped X: "); Serial.print(x);
-    Serial.print(" Mapped Y: "); Serial.println(y);
 
     // Check if touch is within Top Bar (0-40px)
     if (y < 40) {
       // Debounce slightly for buttons
       delay(150); 
       
-      if (x < 160) {
+      if (x < 50) {
         // Left Button: CLEAR
         Serial.println("Action: Clear");
         tft.fillRect(0, 40, 320, 200, currentBgColor);
         tft.drawRect(0, 40, 320, 200, ILI9341_WHITE);
       } else {
-        // Right Button: TOGGLE BG
-        Serial.println("Action: Toggle BG");
-        currentBgColor = (currentBgColor == ILI9341_BLACK) ? ILI9341_WHITE : ILI9341_BLACK;
-        tft.fillScreen(currentBgColor);
-        drawUI();
+        // Palette Selection
+        int startX = 50;
+        int boxWidth = (320 - 50) / paletteCount;
+        int index = (x - startX) / boxWidth;
+        
+        if (index >= 0 && index < paletteCount) {
+           paintColor = palette[index];
+           Serial.print("Action: Color Selected "); Serial.println(index);
+           drawUI(); // Redraw to show selection
+        }
       }
       
       // Wait for release to prevent repeated triggering
@@ -133,7 +147,6 @@ void loop() {
       }
     } else {
       // Drawing Area
-      // Draw Blue Circle
       tft.fillCircle(x, y, 2, paintColor);
     }
   }
