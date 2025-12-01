@@ -1,7 +1,7 @@
 # Wiring Summary
 
-| ---- | ---- | ---- |
 | Display	| ESP32-C3	| Note |
+| ---- | ---- | ---- |
 | VCC	| 3V3	| |
 | GND	| GND	| |
 | SCK	| GPIO 4	| Shared with T_CLK |
