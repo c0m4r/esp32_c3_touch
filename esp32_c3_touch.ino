@@ -47,6 +47,16 @@ int8_t expandedBox = -1; // -1 = none, 0-3 = expanded box
 #define GRAPH_BG      0x2145    // Dark gray
 #define GRAPH_FILL    0x07E0    // Green
 
+// Double buffering - canvas for smooth rendering
+GFXcanvas16 *canvas = nullptr;
+
+// Helper to draw canvas to screen at position
+void flushCanvas(int x, int y, int w, int h) {
+  if (canvas) {
+    tft.drawRGBBitmap(x, y, canvas->getBuffer(), w, h);
+  }
+}
+
 void setupWifi() {
   Serial.print("Connecting to ");
   Serial.println(ssid);
@@ -82,7 +92,11 @@ void checkWifi() {
 
 String getSystemInfoJson() {
   float temp = temperatureRead();
-  uint32_t heap = ESP.getFreeHeap();
+  uint32_t heapFree = ESP.getFreeHeap();
+  uint32_t flashSize = ESP.getFlashChipSize();
+  uint32_t flashFree = flashSize - ESP.getSketchSize();
+  unsigned long uptimeSeconds = millis() / 1000;
+  int wifiStrength = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -100;
   
   struct tm timeinfo;
   char timeStringBuff[50] = "N/A";
@@ -92,8 +106,10 @@ String getSystemInfoJson() {
 
   String json = "{";
   json += "\"temperature\": " + String(temp) + ",";
-  json += "\"voltage\": \"N/A\",";
-  json += "\"free_heap\": " + String(heap) + ",";
+  json += "\"free_ram\": " + String(heapFree / 1024) + ",";
+  json += "\"free_flash\": " + String(flashFree / 1024) + ",";
+  json += "\"uptime\": " + String(uptimeSeconds) + ",";
+  json += "\"wifi_strength\": " + String(wifiStrength) + ",";
   json += "\"time\": \"" + String(timeStringBuff) + "\"";
   json += "}";
   return json;
@@ -397,16 +413,177 @@ void drawSystemBox(int x, int y, int w, int h, bool expanded) {
 }
 
 void drawDashboard() {
-  tft.fillScreen(BG_COLOR);
+  // Use double buffering for smooth updates
   
   if (expandedBox == -1) {
-    // Normal 4-box view
-    drawMemoryBox(0, 0, 160, 120, false);
-    drawWiFiBox(160, 0, 160, 120, false);
-    drawTimeBox(0, 120, 160, 120, false);
-    drawSystemBox(160, 120, 160, 120, false);
+    // Normal 4-box view - use half-screen buffering
+    
+    // Create canvas for top half (320x120) if needed
+    if (!canvas || canvas->width() != 320 || canvas->height() != 120) {
+      if (canvas) delete canvas;
+      canvas = new GFXcanvas16(320, 120);
+      if (!canvas) {
+        Serial.println("Failed to allocate canvas!");
+        // Fallback to direct drawing
+        drawMemoryBox(0, 0, 160, 120, false);
+        drawWiFiBox(160, 0, 160, 120, false);
+        drawTimeBox(0, 120, 160, 120, false);
+        drawSystemBox(160, 120, 160, 120, false);
+        return;
+      }
+    }
+    
+    // Draw top half to canvas
+    canvas->fillScreen(BG_COLOR);
+    
+    // Draw Memory box (0,0)
+    uint32_t heapUsed = ESP.getHeapSize() - ESP.getFreeHeap();
+    uint32_t heapTotal = ESP.getHeapSize();
+    uint32_t flashSize = ESP.getFlashChipSize();
+    uint32_t flashUsed = ESP.getSketchSize();
+    int heapPct = (heapUsed * 100) / heapTotal;
+    int flashPct = (flashUsed * 100) / flashSize;
+    
+    canvas->fillRect(0, 0, 160, 120, BOX_BG);
+    canvas->drawRect(0, 0, 160, 120, BORDER_COLOR);
+    canvas->setTextColor(TEXT_COLOR);
+    canvas->setTextSize(1);
+    canvas->setCursor(5, 5);
+    canvas->print("MEMORY");
+    canvas->setCursor(5, 20);
+    canvas->print("RAM:");
+    canvas->setCursor(5, 32);
+    canvas->printf("%d/%dKB", heapUsed/1024, heapTotal/1024);
+    canvas->setCursor(5, 44);
+    canvas->printf("(%d%%)", heapPct);
+    // Draw usage bar for RAM
+    canvas->fillRect(5, 56, 150, 8, GRAPH_BG);
+    canvas->drawRect(5, 56, 150, 8, BORDER_COLOR);
+    int fillW = (148 * heapPct) / 100;
+    if (fillW > 0) canvas->fillRect(6, 57, fillW, 6, GRAPH_FILL);
+    
+    canvas->setCursor(5, 72);
+    canvas->print("Flash:");
+    canvas->setCursor(5, 84);
+    canvas->printf("%d/%dKB", flashUsed/1024, flashSize/1024);
+    canvas->setCursor(5, 96);
+    canvas->printf("(%d%%)", flashPct);
+    // Draw usage bar for Flash
+    canvas->fillRect(5, 108, 150, 8, GRAPH_BG);
+    canvas->drawRect(5, 108, 150, 8, BORDER_COLOR);
+    fillW = (148 * flashPct) / 100;
+    if (fillW > 0) canvas->fillRect(6, 109, fillW, 6, GRAPH_FILL);
+    
+    // Draw WiFi box (160,0)
+    bool connected = (WiFi.status() == WL_CONNECTED);
+    int rssi = connected ? WiFi.RSSI() : -100;
+    
+    canvas->fillRect(160, 0, 160, 120, BOX_BG);
+    canvas->drawRect(160, 0, 160, 120, BORDER_COLOR);
+    canvas->setCursor(165, 5);
+    canvas->print("WiFi");
+    
+    // WiFi Icon
+    int iconX = 160 + 80;
+    int iconY = 35;
+    int bars = 0;
+    if (rssi > -50) bars = 4;
+    else if (rssi > -60) bars = 3;
+    else if (rssi > -70) bars = 2;
+    else if (rssi > -80) bars = 1;
+    
+    for (int i = 0; i < 4; i++) {
+      uint16_t color = (i < bars) ? TEXT_COLOR : 0x4208;
+      int radius = (i + 1) * 6;
+      for (int angle = 210; angle <= 330; angle += 3) {
+        float rad = angle * PI / 180.0;
+        int x1 = iconX + radius * cos(rad);
+        int y1 = iconY + radius * sin(rad);
+        canvas->drawPixel(x1, y1, color);
+      }
+    }
+    canvas->fillCircle(iconX, iconY, 2, bars > 0 ? TEXT_COLOR : 0x4208);
+    
+    canvas->setCursor(165, 65);
+    canvas->print(connected ? "Connected" : "Disconnected");
+    
+    if (connected) {
+      canvas->setCursor(165, 80);
+      String ssid = WiFi.SSID();
+      if (ssid.length() > 16) ssid = ssid.substring(0, 13) + "...";
+      canvas->print(ssid);
+      canvas->setCursor(165, 95);
+      canvas->printf("%d dBm", rssi);
+    }
+    
+    // Flush top half to screen
+    flushCanvas(0, 0, 320, 120);
+    
+    // Draw bottom half to canvas
+    canvas->fillScreen(BG_COLOR);
+    
+    // Draw Time box (0,0 in canvas, maps to 0,120 on screen)
+    struct tm timeinfo;
+    bool ntpOk = getLocalTime(&timeinfo);
+    
+    canvas->fillRect(0, 0, 160, 120, BOX_BG);
+    canvas->drawRect(0, 0, 160, 120, BORDER_COLOR);
+    canvas->setCursor(5, 5);
+    canvas->print("TIME");
+    canvas->setCursor(5, 25);
+    canvas->print("NTP:");
+    canvas->setCursor(5, 40);
+    canvas->print(ntpOk ? "Synced" : "Not synced");
+    
+    if (ntpOk) {
+      canvas->setCursor(5, 60);
+      char dateBuff[20];
+      strftime(dateBuff, sizeof(dateBuff), "%Y-%m-%d", &timeinfo);
+      canvas->print(dateBuff);
+      canvas->setCursor(5, 75);
+      canvas->setTextSize(2);
+      char timeBuff[10];
+      strftime(timeBuff, sizeof(timeBuff), "%H:%M:%S", &timeinfo);
+      canvas->print(timeBuff);
+      canvas->setTextSize(1);
+    }
+    
+    // Draw System box (160,0 in canvas, maps to 160,120 on screen)
+    float temp = temperatureRead();
+    unsigned long uptimeSeconds = millis() / 1000;
+    
+    canvas->fillRect(160, 0, 160, 120, BOX_BG);
+    canvas->drawRect(160, 0, 160, 120, BORDER_COLOR);
+    canvas->setCursor(165, 5);
+    canvas->print("SYSTEM");
+    canvas->setCursor(165, 25);
+    canvas->print("Temp:");
+    canvas->setCursor(165, 40);
+    canvas->setTextSize(2);
+    canvas->printf("%.1f C", temp);
+    canvas->setTextSize(1);
+    canvas->setCursor(165, 70);
+    canvas->print("Uptime:");
+    canvas->setCursor(165, 85);
+    
+    unsigned long days = uptimeSeconds / 86400;
+    unsigned long hours = (uptimeSeconds % 86400) / 3600;
+    unsigned long minutes = (uptimeSeconds % 3600) / 60;
+    
+    if (days > 0) {
+      canvas->printf("%lud %luh", days, hours);
+    } else if (hours > 0) {
+      canvas->printf("%luh %lum", hours, minutes);
+    } else {
+      canvas->printf("%lum", minutes);
+    }
+    
+    // Flush bottom half to screen
+    flushCanvas(0, 120, 320, 120);
+    
   } else {
-    // Expanded view
+    // Expanded view - draw directly (single box, less flicker)
+    tft.fillScreen(BG_COLOR);
     switch(expandedBox) {
       case 0: drawMemoryBox(0, 0, 320, 240, true); break;
       case 1: drawWiFiBox(0, 0, 320, 240, true); break;
@@ -436,12 +613,14 @@ void handleTouch() {
       
       if (touchedBox >= 0) {
         expandedBox = touchedBox;
+        tft.fillScreen(BG_COLOR); // Clear only when expanding
         drawDashboard();
         Serial.printf("Expanded box %d\n", expandedBox);
       }
     } else {
       // Collapse back to normal view
       expandedBox = -1;
+      tft.fillScreen(BG_COLOR); // Clear only when collapsing
       drawDashboard();
       Serial.println("Collapsed to normal view");
     }
@@ -473,7 +652,7 @@ void setup() {
   server.on("/", handleRoot);
   server.begin();
   
-  // Draw initial UI
+  // Draw initial UI (canvas will handle clearing)
   drawDashboard();
 }
 
@@ -482,7 +661,7 @@ void loop() {
   checkWifi();
   handleTouch();
   
-  // Update display every second
+  // Update display every 1 second (in both normal and expanded views)
   if (millis() - lastUpdate > 1000) {
     drawDashboard();
     lastUpdate = millis();
