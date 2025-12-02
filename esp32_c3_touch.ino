@@ -350,20 +350,20 @@ void drawDashboard() {
           target->fillRect(0, 0 + drawOffsetY, 320, 240, BOX_BG);
           target->drawRect(0, 0 + drawOffsetY, 320, 240, BORDER_COLOR);
           target->setTextColor(TEXT_COLOR);
-          target->setTextSize(2);
+          target->setTextSize(3);
           target->setCursor(10, 10 + drawOffsetY);
           target->print("MEMORY");
-          target->setTextSize(1);
-          target->setCursor(10, 40 + drawOffsetY);
+          target->setTextSize(2);
+          target->setCursor(10, 50 + drawOffsetY);
           target->print("RAM:");
-          target->setCursor(10, 55 + drawOffsetY);
+          target->setCursor(10, 75 + drawOffsetY);
           target->printf("%d / %d KB (%d%%)", heapUsed/1024, heapTotal/1024, heapPct);
-          drawUsageBar(target, 10, 70 + drawOffsetY, 300, 20, heapPct);
-          target->setCursor(10, 110 + drawOffsetY);
+          drawUsageBar(target, 10, 100 + drawOffsetY, 300, 20, heapPct);
+          target->setCursor(10, 135 + drawOffsetY);
           target->print("Flash:");
-          target->setCursor(10, 125 + drawOffsetY);
+          target->setCursor(10, 160 + drawOffsetY);
           target->printf("%d / %d KB (%d%%)", flashUsed/1024, flashSize/1024, flashPct);
-          drawUsageBar(target, 10, 140 + drawOffsetY, 300, 20, flashPct);
+          drawUsageBar(target, 10, 185 + drawOffsetY, 300, 20, flashPct);
           break;
         }
         
@@ -374,25 +374,26 @@ void drawDashboard() {
           target->fillRect(0, 0 + drawOffsetY, 320, 240, BOX_BG);
           target->drawRect(0, 0 + drawOffsetY, 320, 240, BORDER_COLOR);
           target->setTextColor(TEXT_COLOR);
-          target->setTextSize(2);
+          target->setTextSize(3);
           target->setCursor(10, 10 + drawOffsetY);
           target->print("WiFi");
-          drawWiFiIcon(target, 160, 60 + drawOffsetY, rssi);
-          target->setTextSize(1);
-          target->setCursor(10, 100 + drawOffsetY);
-          target->print("Status:");
-          target->setCursor(10, 115 + drawOffsetY);
+          // Draw bigger WiFi icon centered
+          drawWiFiIcon(target, 160, 75 + drawOffsetY, rssi);
+          // Signal strength numeric below icon
+          target->setTextSize(2);
+          target->setCursor(130, 110 + drawOffsetY);
+          target->printf("%d dBm", rssi);
+          // Status and connection info with bigger text
+          target->setTextSize(2);
+          target->setCursor(10, 145 + drawOffsetY);
+          target->print("Status: ");
           target->print(connected ? "Connected" : "Disconnected");
           if (connected) {
-            target->setCursor(10, 135 + drawOffsetY);
-            target->print("SSID:");
-            target->setCursor(10, 150 + drawOffsetY);
+            target->setCursor(10, 175 + drawOffsetY);
+            target->print("SSID: ");
             target->print(WiFi.SSID());
-            target->setCursor(10, 170 + drawOffsetY);
-            target->printf("Signal: %d dBm", rssi);
-            target->setCursor(10, 190 + drawOffsetY);
-            target->print("IP:");
             target->setCursor(10, 205 + drawOffsetY);
+            target->print("IP: ");
             target->print(WiFi.localIP());
           }
           break;
@@ -405,20 +406,20 @@ void drawDashboard() {
           target->fillRect(0, 0 + drawOffsetY, 320, 240, BOX_BG);
           target->drawRect(0, 0 + drawOffsetY, 320, 240, BORDER_COLOR);
           target->setTextColor(TEXT_COLOR);
-          target->setTextSize(2);
+          target->setTextSize(3);
           target->setCursor(10, 10 + drawOffsetY);
           target->print("TIME");
-          target->setTextSize(1);
-          target->setCursor(10, 40 + drawOffsetY);
+          target->setTextSize(2);
+          target->setCursor(10, 50 + drawOffsetY);
           target->print("NTP: ");
           target->print(ntpOk ? "Synced" : "Not synced");
           if (ntpOk) {
             char dateBuff[20];
             strftime(dateBuff, sizeof(dateBuff), "%Y-%m-%d", &timeinfo);
-            target->setCursor(10, 70 + drawOffsetY);
+            target->setCursor(10, 90 + drawOffsetY);
             target->setTextSize(2);
             target->print(dateBuff);
-            target->setCursor(10, 120 + drawOffsetY);
+            target->setCursor(10, 140 + drawOffsetY);
             target->setTextSize(3);
             char timeBuff[10];
             strftime(timeBuff, sizeof(timeBuff), "%H:%M:%S", &timeinfo);
@@ -434,19 +435,19 @@ void drawDashboard() {
           target->fillRect(0, 0 + drawOffsetY, 320, 240, BOX_BG);
           target->drawRect(0, 0 + drawOffsetY, 320, 240, BORDER_COLOR);
           target->setTextColor(TEXT_COLOR);
-          target->setTextSize(2);
+          target->setTextSize(3);
           target->setCursor(10, 10 + drawOffsetY);
           target->print("SYSTEM");
-          target->setTextSize(1);
-          target->setCursor(10, 50 + drawOffsetY);
+          target->setTextSize(2);
+          target->setCursor(10, 55 + drawOffsetY);
           target->print("Temperature:");
-          target->setCursor(10, 80 + drawOffsetY);
+          target->setCursor(10, 90 + drawOffsetY);
           target->setTextSize(4);
           target->printf("%.1f C", temp);
-          target->setTextSize(1);
-          target->setCursor(10, 140 + drawOffsetY);
+          target->setTextSize(2);
+          target->setCursor(10, 150 + drawOffsetY);
           target->print("Uptime:");
-          target->setCursor(10, 160 + drawOffsetY);
+          target->setCursor(10, 185 + drawOffsetY);
           target->setTextSize(2);
           unsigned long hours = (uptimeSeconds % 86400) / 3600;
           unsigned long minutes = (uptimeSeconds % 3600) / 60;
