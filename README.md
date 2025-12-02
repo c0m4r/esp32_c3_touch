@@ -22,3 +22,31 @@
 | T_CLK	| GPIO 4	| Connect to SCK | brown |
 | T_DIN	| GPIO 6	| Connect to MOSI | orange |
 | T_DO	| GPIO 5	| Connect to MISO | yellow |
+
+## Function Descriptions
+
+### `esp32_c3_touch.ino`
+
+This is the main Arduino sketch for the ESP32-C3 Touch project. It handles WiFi connectivity, the web server, and the touchscreen dashboard interface.
+
+- **`setupWifi()`**: Initializes the WiFi connection using credentials from `secrets.h`.
+- **`checkWifi()`**: Checks the WiFi connection status and attempts to reconnect if disconnected.
+- **`getSystemInfoJson()`**: Collects system information (uptime, heap memory, WiFi signal strength) and returns it as a JSON string.
+- **`handleRoot()`**: Handles HTTP requests to the root URL ("/") and serves a simple "Hello from ESP32-C3!" message.
+- **`drawUsageBar(Adafruit_GFX* gfx, int x, int y, int w, int h, int percentage)`**: Draws a graphical usage bar at the specified coordinates with the given percentage fill.
+- **`drawWiFiIcon(Adafruit_GFX* gfx, int x, int y, int rssi)`**: Draws a WiFi signal strength icon based on the RSSI value.
+- **`drawMemoryBox(int x, int y, int w, int h, bool expanded)`**: Renders the memory usage section of the dashboard.
+- **`drawWiFiBox(int x, int y, int w, int h, bool expanded)`**: Renders the WiFi status section of the dashboard.
+- **`drawTimeBox(int x, int y, int w, int h, bool expanded)`**: Renders the time display section of the dashboard.
+- **`drawSystemBox(int x, int y, int w, int h, bool expanded)`**: Renders the system information section of the dashboard.
+- **`drawDashboard()`**: Orchestrates the drawing of the entire dashboard, including all the boxes (Memory, WiFi, Time, System).
+- **`handleTouch()`**: Detects and processes touch input from the screen, allowing interaction with the dashboard elements (e.g., expanding/collapsing boxes).
+- **`drawSplashScreen()`**: Displays the splash screen image stored in `image_data.h` on startup.
+- **`setup()`**: The standard Arduino setup function. It initializes the serial communication, display, touchscreen, WiFi, and time sync.
+- **`loop()`**: The standard Arduino loop function. It handles the main program logic, including WiFi checks, web server handling, touch input processing, and dashboard updates.
+
+### `convert_image.py`
+
+This Python script is a utility to convert an image file into a C header file usable by the Arduino sketch.
+
+- **`convert_image(input_path, output_path)`**: Reads an image file (e.g., PNG), resizes it to 320x240, converts it to RGB format, and then writes the pixel data as a C array of RGB565 values to a header file (`image_data.h`). This allows the image to be stored in the ESP32's program memory (PROGMEM) and displayed on the screen.
