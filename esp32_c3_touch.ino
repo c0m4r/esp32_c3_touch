@@ -47,12 +47,12 @@ int8_t expandedBox = -1; // -1 = none, 0-3 = expanded box
 #define GRAPH_BG      0x2145    // Dark gray
 #define GRAPH_FILL    0x07E0    // Green
 
-// Double buffering - canvas for smooth rendering
+// Double buffering - one canvas at a time
 GFXcanvas16 *canvas = nullptr;
 
 // Helper to draw canvas to screen at position
 void flushCanvas(int x, int y, int w, int h) {
-  if (canvas) {
+  if (canvas && canvas->getBuffer()) {
     tft.drawRGBBitmap(x, y, canvas->getBuffer(), w, h);
   }
 }
@@ -119,476 +119,349 @@ void handleRoot() {
   server.send(200, "application/json", getSystemInfoJson());
 }
 
-void drawUsageBar(int x, int y, int w, int h, int percentage) {
-  // Draw background
-  tft.fillRect(x, y, w, h, GRAPH_BG);
-  tft.drawRect(x, y, w, h, BORDER_COLOR);
-  
-  // Draw filled portion
+void drawUsageBar(Adafruit_GFX* gfx, int x, int y, int w, int h, int percentage) {
+  if (!gfx) return;
+  gfx->fillRect(x, y, w, h, GRAPH_BG);
+  gfx->drawRect(x, y, w, h, BORDER_COLOR);
   int fillWidth = (w - 2) * percentage / 100;
   if (fillWidth > 0) {
-    tft.fillRect(x + 1, y + 1, fillWidth, h - 2, GRAPH_FILL);
+    gfx->fillRect(x + 1, y + 1, fillWidth, h - 2, GRAPH_FILL);
   }
 }
 
-void drawWiFiIcon(int x, int y, int rssi) {
-  // WiFi signal strength: -30 = excellent, -67 = good, -70 = fair, -80 = weak
+void drawWiFiIcon(Adafruit_GFX* gfx, int x, int y, int rssi) {
+  if (!gfx) return;
   int bars = 0;
   if (rssi > -50) bars = 4;
   else if (rssi > -60) bars = 3;
   else if (rssi > -70) bars = 2;
   else if (rssi > -80) bars = 1;
   
-  // Draw WiFi symbol (curved arcs)
   for (int i = 0; i < 4; i++) {
     uint16_t color = (i < bars) ? TEXT_COLOR : 0x4208;
     int radius = (i + 1) * 6;
-    
-    // Draw arc segments
     for (int angle = 210; angle <= 330; angle += 3) {
       float rad = angle * PI / 180.0;
       int x1 = x + radius * cos(rad);
       int y1 = y + radius * sin(rad);
-      tft.drawPixel(x1, y1, color);
+      gfx->drawPixel(x1, y1, color);
     }
   }
-  
-  // Draw center dot
-  tft.fillCircle(x, y, 2, bars > 0 ? TEXT_COLOR : 0x4208);
+  gfx->fillCircle(x, y, 2, bars > 0 ? TEXT_COLOR : 0x4208);
 }
 
 void drawMemoryBox(int x, int y, int w, int h, bool expanded) {
-  tft.fillRect(x, y, w, h, BOX_BG);
-  tft.drawRect(x, y, w, h, BORDER_COLOR);
-  
-  uint32_t heapUsed = ESP.getHeapSize() - ESP.getFreeHeap();
-  uint32_t heapTotal = ESP.getHeapSize();
-  uint32_t flashSize = ESP.getFlashChipSize();
-  uint32_t flashUsed = ESP.getSketchSize();
-  
-  int heapPct = (heapUsed * 100) / heapTotal;
-  int flashPct = (flashUsed * 100) / flashSize;
-  
-  tft.setTextColor(TEXT_COLOR);
-  
-  if (expanded) {
-    // Expanded view
-    tft.setTextSize(2);
-    tft.setCursor(x + 10, y + 10);
-    tft.print("MEMORY");
-    
-    tft.setTextSize(1);
-    // RAM
-    tft.setCursor(x + 10, y + 40);
-    tft.print("RAM:");
-    tft.setCursor(x + 10, y + 55);
-    tft.printf("%d / %d KB (%d%%)", heapUsed/1024, heapTotal/1024, heapPct);
-    drawUsageBar(x + 10, y + 70, w - 20, 20, heapPct);
-    
-    // Flash
-    tft.setCursor(x + 10, y + 110);
-    tft.print("Flash:");
-    tft.setCursor(x + 10, y + 125);
-    tft.printf("%d / %d KB (%d%%)", flashUsed/1024, flashSize/1024, flashPct);
-    drawUsageBar(x + 10, y + 140, w - 20, 20, flashPct);
-  } else {
-    // Compact view
-    tft.setTextSize(1);
-    tft.setCursor(x + 5, y + 5);
-    tft.print("MEMORY");
-    
-    // RAM
-    tft.setCursor(x + 5, y + 20);
-    tft.print("RAM:");
-    tft.setCursor(x + 5, y + 32);
-    tft.printf("%d/%dKB", heapUsed/1024, heapTotal/1024);
-    tft.setCursor(x + 5, y + 44);
-    tft.printf("(%d%%)", heapPct);
-    drawUsageBar(x + 5, y + 56, w - 10, 8, heapPct);
-    
-    // Flash
-    tft.setCursor(x + 5, y + 72);
-    tft.print("Flash:");
-    tft.setCursor(x + 5, y + 84);
-    tft.printf("%d/%dKB", flashUsed/1024, flashSize/1024);
-    tft.setCursor(x + 5, y + 96);
-    tft.printf("(%d%%)", flashPct);
-    drawUsageBar(x + 5, y + 108, w - 10, 8, flashPct);
-  }
+  // Placeholder for fallback
 }
 
 void drawWiFiBox(int x, int y, int w, int h, bool expanded) {
-  tft.fillRect(x, y, w, h, BOX_BG);
-  tft.drawRect(x, y, w, h, BORDER_COLOR);
-  
-  bool connected = (WiFi.status() == WL_CONNECTED);
-  int rssi = connected ? WiFi.RSSI() : -100;
-  
-  tft.setTextColor(TEXT_COLOR);
-  
-  if (expanded) {
-    // Expanded view
-    tft.setTextSize(2);
-    tft.setCursor(x + 10, y + 10);
-    tft.print("WiFi");
-    
-    // WiFi Icon (larger)
-    drawWiFiIcon(x + w/2, y + 60, rssi);
-    
-    tft.setTextSize(1);
-    tft.setCursor(x + 10, y + 100);
-    tft.print("Status:");
-    tft.setCursor(x + 10, y + 115);
-    tft.print(connected ? "Connected" : "Disconnected");
-    
-    if (connected) {
-      tft.setCursor(x + 10, y + 135);
-      tft.print("SSID:");
-      tft.setCursor(x + 10, y + 150);
-      tft.print(WiFi.SSID());
-      
-      tft.setCursor(x + 10, y + 170);
-      tft.printf("Signal: %d dBm", rssi);
-      
-      tft.setCursor(x + 10, y + 190);
-      tft.print("IP:");
-      tft.setCursor(x + 10, y + 205);
-      tft.print(WiFi.localIP());
-    }
-  } else {
-    // Compact view
-    tft.setTextSize(1);
-    tft.setCursor(x + 5, y + 5);
-    tft.print("WiFi");
-    
-    // WiFi Icon
-    drawWiFiIcon(x + w/2, y + 35, rssi);
-    
-    tft.setCursor(x + 5, y + 65);
-    tft.print(connected ? "Connected" : "Disconnected");
-    
-    if (connected) {
-      tft.setCursor(x + 5, y + 80);
-      String ssid = WiFi.SSID();
-      if (ssid.length() > 16) ssid = ssid.substring(0, 13) + "...";
-      tft.print(ssid);
-      
-      tft.setCursor(x + 5, y + 95);
-      tft.printf("%d dBm", rssi);
-    }
-  }
+  // Placeholder for fallback
 }
 
 void drawTimeBox(int x, int y, int w, int h, bool expanded) {
-  tft.fillRect(x, y, w, h, BOX_BG);
-  tft.drawRect(x, y, w, h, BORDER_COLOR);
-  
-  struct tm timeinfo;
-  bool ntpOk = getLocalTime(&timeinfo);
-  
-  tft.setTextColor(TEXT_COLOR);
-  
-  if (expanded) {
-    // Expanded view
-    tft.setTextSize(2);
-    tft.setCursor(x + 10, y + 10);
-    tft.print("TIME");
-    
-    tft.setTextSize(1);
-    tft.setCursor(x + 10, y + 40);
-    tft.print("NTP: ");
-    tft.print(ntpOk ? "Synced" : "Not synced");
-    
-    if (ntpOk) {
-      // Date
-      tft.setCursor(x + 10, y + 70);
-      char dateBuff[20];
-      strftime(dateBuff, sizeof(dateBuff), "%Y-%m-%d", &timeinfo);
-      tft.setTextSize(2);
-      tft.print(dateBuff);
-      
-      // Time (large)
-      tft.setCursor(x + 10, y + 120);
-      tft.setTextSize(3);
-      char timeBuff[10];
-      strftime(timeBuff, sizeof(timeBuff), "%H:%M:%S", &timeinfo);
-      tft.print(timeBuff);
-    }
-  } else {
-    // Compact view
-    tft.setTextSize(1);
-    tft.setCursor(x + 5, y + 5);
-    tft.print("TIME");
-    
-    tft.setCursor(x + 5, y + 25);
-    tft.print("NTP:");
-    tft.setCursor(x + 5, y + 40);
-    tft.print(ntpOk ? "Synced" : "Not synced");
-    
-    if (ntpOk) {
-      tft.setCursor(x + 5, y + 60);
-      char dateBuff[20];
-      strftime(dateBuff, sizeof(dateBuff), "%Y-%m-%d", &timeinfo);
-      tft.print(dateBuff);
-      
-      tft.setCursor(x + 5, y + 75);
-      tft.setTextSize(2);
-      char timeBuff[10];
-      strftime(timeBuff, sizeof(timeBuff), "%H:%M:%S", &timeinfo);
-      tft.print(timeBuff);
-    }
-  }
+  // Placeholder for fallback
 }
 
 void drawSystemBox(int x, int y, int w, int h, bool expanded) {
-  tft.fillRect(x, y, w, h, BOX_BG);
-  tft.drawRect(x, y, w, h, BORDER_COLOR);
-  
-  float temp = temperatureRead();
-  unsigned long uptimeSeconds = millis() / 1000;
-  
-  tft.setTextColor(TEXT_COLOR);
-  
-  if (expanded) {
-    // Expanded view
-    tft.setTextSize(2);
-    tft.setCursor(x + 10, y + 10);
-    tft.print("SYSTEM");
-    
-    tft.setTextSize(1);
-    tft.setCursor(x + 10, y + 50);
-    tft.print("Temperature:");
-    
-    tft.setCursor(x + 10, y + 80);
-    tft.setTextSize(4);
-    tft.printf("%.1f C", temp);
-    
-    tft.setTextSize(1);
-    tft.setCursor(x + 10, y + 140);
-    tft.print("Uptime:");
-    
-    tft.setCursor(x + 10, y + 160);
-    tft.setTextSize(2);
-    unsigned long days = uptimeSeconds / 86400;
-    unsigned long hours = (uptimeSeconds % 86400) / 3600;
-    unsigned long minutes = (uptimeSeconds % 3600) / 60;
-    unsigned long seconds = uptimeSeconds % 60;
-    
-    if (days > 0) {
-      tft.printf("%lud %luh", days, hours);
-    } else if (hours > 0) {
-      tft.printf("%luh %lum", hours, minutes);
-    } else {
-      tft.printf("%lum %lus", minutes, seconds);
-    }
-  } else {
-    // Compact view
-    tft.setTextSize(1);
-    tft.setCursor(x + 5, y + 5);
-    tft.print("SYSTEM");
-    
-    tft.setCursor(x + 5, y + 25);
-    tft.print("Temp:");
-    tft.setCursor(x + 5, y + 40);
-    tft.setTextSize(2);
-    tft.printf("%.1f C", temp);
-    
-    tft.setTextSize(1);
-    tft.setCursor(x + 5, y + 70);
-    tft.print("Uptime:");
-    tft.setCursor(x + 5, y + 85);
-    
-    unsigned long days = uptimeSeconds / 86400;
-    unsigned long hours = (uptimeSeconds % 86400) / 3600;
-    unsigned long minutes = (uptimeSeconds % 3600) / 60;
-    
-    if (days > 0) {
-      tft.printf("%lud %luh", days, hours);
-    } else if (hours > 0) {
-      tft.printf("%luh %lum", hours, minutes);
-    } else {
-      tft.printf("%lum", minutes);
-    }
-  }
+  // Placeholder for fallback
 }
 
 void drawDashboard() {
-  // Use double buffering for smooth updates
+  // Always use a fixed 320x120 buffer (75KB) to prevent OOM
+  int requiredHeight = 120;
   
-  if (expandedBox == -1) {
-    // Normal 4-box view - use half-screen buffering
-    
-    // Create canvas for top half (320x120) if needed
-    if (!canvas || canvas->width() != 320 || canvas->height() != 120) {
-      if (canvas) delete canvas;
-      canvas = new GFXcanvas16(320, 120);
-      if (!canvas) {
-        Serial.println("Failed to allocate canvas!");
-        // Fallback to direct drawing
-        drawMemoryBox(0, 0, 160, 120, false);
-        drawWiFiBox(160, 0, 160, 120, false);
-        drawTimeBox(0, 120, 160, 120, false);
-        drawSystemBox(160, 120, 160, 120, false);
-        return;
-      }
+  // Recreate canvas only if it doesn't exist or has wrong size
+  if (!canvas || canvas->height() != requiredHeight) {
+    if (canvas) {
+      delete canvas;
+      canvas = nullptr;
     }
     
-    // Draw top half to canvas
-    canvas->fillScreen(BG_COLOR);
+    // Wait for memory to stabilize
+    delay(20);
     
-    // Draw Memory box (0,0)
+    // Allocate new canvas
+    Serial.printf("Allocating canvas: 320x%d... ", requiredHeight);
+    canvas = new GFXcanvas16(320, requiredHeight);
+    
+    if (!canvas || !canvas->getBuffer()) {
+      Serial.println("FAILED! Using direct draw fallback");
+      if (canvas) { delete canvas; canvas = nullptr; }
+    } else {
+      Serial.printf("Success! (%d KB free)\n", ESP.getFreeHeap() / 1024);
+    }
+  }
+  
+  // Determine if we can use the buffer
+  bool useBuffer = (canvas != nullptr);
+  Adafruit_GFX* target = useBuffer ? (Adafruit_GFX*)canvas : (Adafruit_GFX*)&tft;
+  
+  // If direct drawing, clear screen once at start
+  if (!useBuffer) {
+    tft.fillScreen(BG_COLOR);
+  }
+
+  if (expandedBox == -1) {
+    // === NORMAL 4-BOX VIEW ===
+    // This fits perfectly in our 2-pass logic naturally
+    
+    // Pass 1: Top Half (0-120)
+    if (useBuffer) canvas->fillScreen(BG_COLOR);
+    
     uint32_t heapUsed = ESP.getHeapSize() - ESP.getFreeHeap();
     uint32_t heapTotal = ESP.getHeapSize();
     uint32_t flashSize = ESP.getFlashChipSize();
     uint32_t flashUsed = ESP.getSketchSize();
     int heapPct = (heapUsed * 100) / heapTotal;
     int flashPct = (flashUsed * 100) / flashSize;
-    
-    canvas->fillRect(0, 0, 160, 120, BOX_BG);
-    canvas->drawRect(0, 0, 160, 120, BORDER_COLOR);
-    canvas->setTextColor(TEXT_COLOR);
-    canvas->setTextSize(1);
-    canvas->setCursor(5, 5);
-    canvas->print("MEMORY");
-    canvas->setCursor(5, 20);
-    canvas->print("RAM:");
-    canvas->setCursor(5, 32);
-    canvas->printf("%d/%dKB", heapUsed/1024, heapTotal/1024);
-    canvas->setCursor(5, 44);
-    canvas->printf("(%d%%)", heapPct);
-    // Draw usage bar for RAM
-    canvas->fillRect(5, 56, 150, 8, GRAPH_BG);
-    canvas->drawRect(5, 56, 150, 8, BORDER_COLOR);
-    int fillW = (148 * heapPct) / 100;
-    if (fillW > 0) canvas->fillRect(6, 57, fillW, 6, GRAPH_FILL);
-    
-    canvas->setCursor(5, 72);
-    canvas->print("Flash:");
-    canvas->setCursor(5, 84);
-    canvas->printf("%d/%dKB", flashUsed/1024, flashSize/1024);
-    canvas->setCursor(5, 96);
-    canvas->printf("(%d%%)", flashPct);
-    // Draw usage bar for Flash
-    canvas->fillRect(5, 108, 150, 8, GRAPH_BG);
-    canvas->drawRect(5, 108, 150, 8, BORDER_COLOR);
-    fillW = (148 * flashPct) / 100;
-    if (fillW > 0) canvas->fillRect(6, 109, fillW, 6, GRAPH_FILL);
-    
-    // Draw WiFi box (160,0)
     bool connected = (WiFi.status() == WL_CONNECTED);
     int rssi = connected ? WiFi.RSSI() : -100;
     
-    canvas->fillRect(160, 0, 160, 120, BOX_BG);
-    canvas->drawRect(160, 0, 160, 120, BORDER_COLOR);
-    canvas->setCursor(165, 5);
-    canvas->print("WiFi");
+    // Memory box
+    target->fillRect(0, 0, 160, 120, BOX_BG);
+    target->drawRect(0, 0, 160, 120, BORDER_COLOR);
+    target->setTextColor(TEXT_COLOR);
+    target->setTextSize(1);
+    target->setCursor(5, 5);
+    target->print("MEMORY");
+    target->setCursor(5, 20);
+    target->print("RAM:");
+    target->setCursor(5, 32);
+    target->printf("%d/%dKB", heapUsed/1024, heapTotal/1024);
+    target->setCursor(5, 44);
+    target->printf("(%d%%)", heapPct);
+    drawUsageBar(target, 5, 56, 150, 8, heapPct);
+    target->setCursor(5, 72);
+    target->print("Flash:");
+    target->setCursor(5, 84);
+    target->printf("%d/%dKB", flashUsed/1024, flashSize/1024);
+    target->setCursor(5, 96);
+    target->printf("(%d%%)", flashPct);
+    drawUsageBar(target, 5, 108, 150, 8, flashPct);
     
-    // WiFi Icon
-    int iconX = 160 + 80;
-    int iconY = 35;
-    int bars = 0;
-    if (rssi > -50) bars = 4;
-    else if (rssi > -60) bars = 3;
-    else if (rssi > -70) bars = 2;
-    else if (rssi > -80) bars = 1;
-    
-    for (int i = 0; i < 4; i++) {
-      uint16_t color = (i < bars) ? TEXT_COLOR : 0x4208;
-      int radius = (i + 1) * 6;
-      for (int angle = 210; angle <= 330; angle += 3) {
-        float rad = angle * PI / 180.0;
-        int x1 = iconX + radius * cos(rad);
-        int y1 = iconY + radius * sin(rad);
-        canvas->drawPixel(x1, y1, color);
-      }
-    }
-    canvas->fillCircle(iconX, iconY, 2, bars > 0 ? TEXT_COLOR : 0x4208);
-    
-    canvas->setCursor(165, 65);
-    canvas->print(connected ? "Connected" : "Disconnected");
-    
+    // WiFi box
+    target->fillRect(160, 0, 160, 120, BOX_BG);
+    target->drawRect(160, 0, 160, 120, BORDER_COLOR);
+    target->setCursor(165, 5);
+    target->print("WiFi");
+    drawWiFiIcon(target, 240, 35, rssi);
+    target->setCursor(165, 65);
+    target->print(connected ? "Connected" : "Disconnected");
     if (connected) {
-      canvas->setCursor(165, 80);
+      target->setCursor(165, 80);
       String ssid = WiFi.SSID();
       if (ssid.length() > 16) ssid = ssid.substring(0, 13) + "...";
-      canvas->print(ssid);
-      canvas->setCursor(165, 95);
-      canvas->printf("%d dBm", rssi);
+      target->print(ssid);
+      target->setCursor(165, 95);
+      target->printf("%d dBm", rssi);
     }
     
-    // Flush top half to screen
-    flushCanvas(0, 0, 320, 120);
+    if (useBuffer) flushCanvas(0, 0, 320, 120);
     
-    // Draw bottom half to canvas
-    canvas->fillScreen(BG_COLOR);
+    // Pass 2: Bottom Half (120-240)
+    if (useBuffer) canvas->fillScreen(BG_COLOR);
     
-    // Draw Time box (0,0 in canvas, maps to 0,120 on screen)
+    // For normal view, we draw to (0,0) in buffer, but it represents (0,120) on screen
+    // If direct draw, we offset by 120
+    int yOffset = useBuffer ? 0 : 120;
+    
     struct tm timeinfo;
     bool ntpOk = getLocalTime(&timeinfo);
-    
-    canvas->fillRect(0, 0, 160, 120, BOX_BG);
-    canvas->drawRect(0, 0, 160, 120, BORDER_COLOR);
-    canvas->setCursor(5, 5);
-    canvas->print("TIME");
-    canvas->setCursor(5, 25);
-    canvas->print("NTP:");
-    canvas->setCursor(5, 40);
-    canvas->print(ntpOk ? "Synced" : "Not synced");
-    
-    if (ntpOk) {
-      canvas->setCursor(5, 60);
-      char dateBuff[20];
-      strftime(dateBuff, sizeof(dateBuff), "%Y-%m-%d", &timeinfo);
-      canvas->print(dateBuff);
-      canvas->setCursor(5, 75);
-      canvas->setTextSize(2);
-      char timeBuff[10];
-      strftime(timeBuff, sizeof(timeBuff), "%H:%M:%S", &timeinfo);
-      canvas->print(timeBuff);
-      canvas->setTextSize(1);
-    }
-    
-    // Draw System box (160,0 in canvas, maps to 160,120 on screen)
     float temp = temperatureRead();
     unsigned long uptimeSeconds = millis() / 1000;
     
-    canvas->fillRect(160, 0, 160, 120, BOX_BG);
-    canvas->drawRect(160, 0, 160, 120, BORDER_COLOR);
-    canvas->setCursor(165, 5);
-    canvas->print("SYSTEM");
-    canvas->setCursor(165, 25);
-    canvas->print("Temp:");
-    canvas->setCursor(165, 40);
-    canvas->setTextSize(2);
-    canvas->printf("%.1f C", temp);
-    canvas->setTextSize(1);
-    canvas->setCursor(165, 70);
-    canvas->print("Uptime:");
-    canvas->setCursor(165, 85);
-    
-    unsigned long days = uptimeSeconds / 86400;
-    unsigned long hours = (uptimeSeconds % 86400) / 3600;
-    unsigned long minutes = (uptimeSeconds % 3600) / 60;
-    
-    if (days > 0) {
-      canvas->printf("%lud %luh", days, hours);
-    } else if (hours > 0) {
-      canvas->printf("%luh %lum", hours, minutes);
-    } else {
-      canvas->printf("%lum", minutes);
+    // Time box
+    target->fillRect(0, yOffset, 160, 120, BOX_BG);
+    target->drawRect(0, yOffset, 160, 120, BORDER_COLOR);
+    target->setCursor(5, yOffset + 5);
+    target->print("TIME");
+    target->setCursor(5, yOffset + 25);
+    target->print("NTP:");
+    target->setCursor(5, yOffset + 40);
+    target->print(ntpOk ? "Synced" : "Not synced");
+    if (ntpOk) {
+      char dateBuff[20];
+      strftime(dateBuff, sizeof(dateBuff), "%Y-%m-%d", &timeinfo);
+      target->setCursor(5, yOffset + 60);
+      target->print(dateBuff);
+      target->setCursor(5, yOffset + 75);
+      target->setTextSize(2);
+      char timeBuff[10];
+      strftime(timeBuff, sizeof(timeBuff), "%H:%M:%S", &timeinfo);
+      target->print(timeBuff);
+      target->setTextSize(1);
     }
     
-    // Flush bottom half to screen
-    flushCanvas(0, 120, 320, 120);
+    // System box
+    target->fillRect(160, yOffset, 160, 120, BOX_BG);
+    target->drawRect(160, yOffset, 160, 120, BORDER_COLOR);
+    target->setCursor(165, yOffset + 5);
+    target->print("SYSTEM");
+    target->setCursor(165, yOffset + 25);
+    target->print("Temp:");
+    target->setCursor(165, yOffset + 40);
+    target->setTextSize(2);
+    target->printf("%.1f C", temp);
+    target->setTextSize(1);
+    target->setCursor(165, yOffset + 70);
+    target->print("Uptime:");
+    target->setCursor(165, yOffset + 85);
+    unsigned long hours = (uptimeSeconds % 86400) / 3600;
+    unsigned long minutes = (uptimeSeconds % 3600) / 60;
+    if (hours > 0) target->printf("%luh %lum", hours, minutes);
+    else target->printf("%lum", minutes);
+    
+    if (useBuffer) flushCanvas(0, 120, 320, 120);
     
   } else {
-    // Expanded view - draw directly (single box, less flicker)
-    tft.fillScreen(BG_COLOR);
-    switch(expandedBox) {
-      case 0: drawMemoryBox(0, 0, 320, 240, true); break;
-      case 1: drawWiFiBox(0, 0, 320, 240, true); break;
-      case 2: drawTimeBox(0, 0, 320, 240, true); break;
-      case 3: drawSystemBox(0, 0, 320, 240, true); break;
+    // === EXPANDED VIEW (Split Buffering) ===
+    // We render the full screen in TWO passes of 320x120 each
+    
+    for (int pass = 0; pass < 2; pass++) {
+      int virtualY = pass * 120; // 0 for top half, 120 for bottom half
+      
+      if (useBuffer) {
+        canvas->fillScreen(BG_COLOR);
+      } else {
+        // Direct draw doesn't need passes in the same way, but we'll stick to the loop structure
+        // to share the drawing code. We just don't flush.
+      }
+      
+      // Helper to adjust Y coordinates
+      // If direct draw: we draw at actual Y
+      // If buffered: we draw at (Y - virtualY)
+      // BUT: The drawing logic below assumes we are drawing the WHOLE screen.
+      // So we need to shift everything up by virtualY when drawing to buffer.
+      
+      int drawOffsetY = useBuffer ? -virtualY : 0;
+      
+      // We clip output to the buffer size automatically by GFX
+      
+      switch(expandedBox) {
+        case 0: { // Memory
+          uint32_t heapUsed = ESP.getHeapSize() - ESP.getFreeHeap();
+          uint32_t heapTotal = ESP.getHeapSize();
+          uint32_t flashSize = ESP.getFlashChipSize();
+          uint32_t flashUsed = ESP.getSketchSize();
+          int heapPct = (heapUsed * 100) / heapTotal;
+          int flashPct = (flashUsed * 100) / flashSize;
+          
+          target->fillRect(0, 0 + drawOffsetY, 320, 240, BOX_BG);
+          target->drawRect(0, 0 + drawOffsetY, 320, 240, BORDER_COLOR);
+          target->setTextColor(TEXT_COLOR);
+          target->setTextSize(2);
+          target->setCursor(10, 10 + drawOffsetY);
+          target->print("MEMORY");
+          target->setTextSize(1);
+          target->setCursor(10, 40 + drawOffsetY);
+          target->print("RAM:");
+          target->setCursor(10, 55 + drawOffsetY);
+          target->printf("%d / %d KB (%d%%)", heapUsed/1024, heapTotal/1024, heapPct);
+          drawUsageBar(target, 10, 70 + drawOffsetY, 300, 20, heapPct);
+          target->setCursor(10, 110 + drawOffsetY);
+          target->print("Flash:");
+          target->setCursor(10, 125 + drawOffsetY);
+          target->printf("%d / %d KB (%d%%)", flashUsed/1024, flashSize/1024, flashPct);
+          drawUsageBar(target, 10, 140 + drawOffsetY, 300, 20, flashPct);
+          break;
+        }
+        
+        case 1: { // WiFi
+          bool connected = (WiFi.status() == WL_CONNECTED);
+          int rssi = connected ? WiFi.RSSI() : -100;
+          
+          target->fillRect(0, 0 + drawOffsetY, 320, 240, BOX_BG);
+          target->drawRect(0, 0 + drawOffsetY, 320, 240, BORDER_COLOR);
+          target->setTextColor(TEXT_COLOR);
+          target->setTextSize(2);
+          target->setCursor(10, 10 + drawOffsetY);
+          target->print("WiFi");
+          drawWiFiIcon(target, 160, 60 + drawOffsetY, rssi);
+          target->setTextSize(1);
+          target->setCursor(10, 100 + drawOffsetY);
+          target->print("Status:");
+          target->setCursor(10, 115 + drawOffsetY);
+          target->print(connected ? "Connected" : "Disconnected");
+          if (connected) {
+            target->setCursor(10, 135 + drawOffsetY);
+            target->print("SSID:");
+            target->setCursor(10, 150 + drawOffsetY);
+            target->print(WiFi.SSID());
+            target->setCursor(10, 170 + drawOffsetY);
+            target->printf("Signal: %d dBm", rssi);
+            target->setCursor(10, 190 + drawOffsetY);
+            target->print("IP:");
+            target->setCursor(10, 205 + drawOffsetY);
+            target->print(WiFi.localIP());
+          }
+          break;
+        }
+        
+        case 2: { // Time
+          struct tm timeinfo;
+          bool ntpOk = getLocalTime(&timeinfo);
+          
+          target->fillRect(0, 0 + drawOffsetY, 320, 240, BOX_BG);
+          target->drawRect(0, 0 + drawOffsetY, 320, 240, BORDER_COLOR);
+          target->setTextColor(TEXT_COLOR);
+          target->setTextSize(2);
+          target->setCursor(10, 10 + drawOffsetY);
+          target->print("TIME");
+          target->setTextSize(1);
+          target->setCursor(10, 40 + drawOffsetY);
+          target->print("NTP: ");
+          target->print(ntpOk ? "Synced" : "Not synced");
+          if (ntpOk) {
+            char dateBuff[20];
+            strftime(dateBuff, sizeof(dateBuff), "%Y-%m-%d", &timeinfo);
+            target->setCursor(10, 70 + drawOffsetY);
+            target->setTextSize(2);
+            target->print(dateBuff);
+            target->setCursor(10, 120 + drawOffsetY);
+            target->setTextSize(3);
+            char timeBuff[10];
+            strftime(timeBuff, sizeof(timeBuff), "%H:%M:%S", &timeinfo);
+            target->print(timeBuff);
+          }
+          break;
+        }
+        
+        case 3: { // System
+          float temp = temperatureRead();
+          unsigned long uptimeSeconds = millis() / 1000;
+          
+          target->fillRect(0, 0 + drawOffsetY, 320, 240, BOX_BG);
+          target->drawRect(0, 0 + drawOffsetY, 320, 240, BORDER_COLOR);
+          target->setTextColor(TEXT_COLOR);
+          target->setTextSize(2);
+          target->setCursor(10, 10 + drawOffsetY);
+          target->print("SYSTEM");
+          target->setTextSize(1);
+          target->setCursor(10, 50 + drawOffsetY);
+          target->print("Temperature:");
+          target->setCursor(10, 80 + drawOffsetY);
+          target->setTextSize(4);
+          target->printf("%.1f C", temp);
+          target->setTextSize(1);
+          target->setCursor(10, 140 + drawOffsetY);
+          target->print("Uptime:");
+          target->setCursor(10, 160 + drawOffsetY);
+          target->setTextSize(2);
+          unsigned long hours = (uptimeSeconds % 86400) / 3600;
+          unsigned long minutes = (uptimeSeconds % 3600) / 60;
+          unsigned long seconds = uptimeSeconds % 60;
+          if (hours > 0) target->printf("%luh %lum", hours, minutes);
+          else target->printf("%lum %lus", minutes, seconds);
+          break;
+        }
+      }
+      
+      if (useBuffer) {
+        flushCanvas(0, virtualY, 320, 120);
+      } else {
+        // If direct draw, we only need one pass
+        break;
+      }
     }
   }
 }
@@ -597,14 +470,19 @@ void handleTouch() {
   if (ts.touched()) {
     TS_Point p = ts.getPoint();
     
-    if (p.z < 10) return;
+    Serial.printf("Touch: z=%d ", p.z);
     
-    // Map coordinates
+    if (p.z < 10) {
+      Serial.println("(too weak)");
+      return;
+    }
+    
     int16_t x = map(p.y, TS_MINY, TS_MAXY, 0, 320);
     int16_t y = map(p.x, TS_MAXX, TS_MINX, 0, 240);
     
+    Serial.printf("x=%d y=%d ", x, y);
+    
     if (expandedBox == -1) {
-      // Determine which box was touched
       int8_t touchedBox = -1;
       if (x < 160 && y < 120) touchedBox = 0;
       else if (x >= 160 && y < 120) touchedBox = 1;
@@ -612,17 +490,43 @@ void handleTouch() {
       else if (x >= 160 && y >= 120) touchedBox = 3;
       
       if (touchedBox >= 0) {
+        Serial.printf("-> Expand box %d\n", touchedBox);
+        
+        // DISABLE DOUBLE BUFFER: Free canvas memory before expanding
+        if (canvas) {
+          Serial.println("Freeing canvas before expand...");
+          delete canvas;
+          canvas = nullptr;
+        }
+        delay(50); // Allow memory to stabilize
+        
+        // Change state
         expandedBox = touchedBox;
-        tft.fillScreen(BG_COLOR); // Clear only when expanding
+        
+        // Redraw from scratch
         drawDashboard();
-        Serial.printf("Expanded box %d\n", expandedBox);
+      } else {
+        Serial.println("(invalid)");
       }
     } else {
-      // Collapse back to normal view
+      Serial.println("-> Collapse");
+      
+      // DISABLE DOUBLE BUFFER: Free canvas memory before collapsing
+      if (canvas) {
+        Serial.println("Freeing canvas before collapse...");
+        delete canvas;
+        canvas = nullptr;
+      }
+      delay(50); // Allow memory to stabilize
+      
+      // Clear screen to ensure clean slate
+      tft.fillScreen(BG_COLOR);
+      
+      // Change state
       expandedBox = -1;
-      tft.fillScreen(BG_COLOR); // Clear only when collapsing
+      
+      // Redraw main screen from scratch
       drawDashboard();
-      Serial.println("Collapsed to normal view");
     }
     
     delay(100);
@@ -633,26 +537,21 @@ void handleTouch() {
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  Serial.println("Starting 4-Box Dashboard...");
+  Serial.println("ESP32-C3 Dashboard");
 
-  // Init SPI & Display
   SPI.begin(TFT_SCK, TFT_MISO, TFT_MOSI);
   tft.begin(40000000);
   tft.setRotation(1);
   
-  // Init Touch
   if (!ts.begin()) {
-    Serial.println("Touchscreen failed!");
+    Serial.println("Touch failed!");
   }
 
-  // Init WiFi
   setupWifi();
   
-  // Init Server
   server.on("/", handleRoot);
   server.begin();
   
-  // Draw initial UI (canvas will handle clearing)
   drawDashboard();
 }
 
@@ -661,7 +560,6 @@ void loop() {
   checkWifi();
   handleTouch();
   
-  // Update display every 1 second (in both normal and expanded views)
   if (millis() - lastUpdate > 1000) {
     drawDashboard();
     lastUpdate = millis();

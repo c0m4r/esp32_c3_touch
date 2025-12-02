@@ -1,3 +1,3 @@
 #!/bin/bash
 
-arduino-cli monitor
+arduino-cli monitor --config 115200
