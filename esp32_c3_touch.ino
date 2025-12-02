@@ -6,6 +6,7 @@
 #include <WebServer.h>
 #include "time.h"
 #include "secrets.h"
+#include "image_data.h"
 
 // Pin Definitions
 #define TFT_CS        7
@@ -116,7 +117,7 @@ String getSystemInfoJson() {
 }
 
 void handleRoot() {
-  server.send(200, "application/json", getSystemInfoJson());
+  server.send(200, "application/json", getSystemInfoJson() + "\n");
 }
 
 void drawUsageBar(Adafruit_GFX* gfx, int x, int y, int w, int h, int percentage) {
@@ -224,20 +225,20 @@ void drawDashboard() {
     target->setTextSize(1);
     target->setCursor(5, 5);
     target->print("MEMORY");
-    target->setCursor(5, 20);
-    target->print("RAM:");
+    //target->setCursor(5, 20);
+    //target->print("RAM:");
     target->setCursor(5, 32);
-    target->printf("%d/%dKB", heapUsed/1024, heapTotal/1024);
-    target->setCursor(5, 44);
-    target->printf("(%d%%)", heapPct);
-    drawUsageBar(target, 5, 56, 150, 8, heapPct);
+    target->printf("RAM: %d/%dKB (%d%%)", heapUsed/1024, heapTotal/1024, heapPct);
+    //target->setCursor(5, 44);
+    //target->printf("", heapPct);
+    drawUsageBar(target, 5, 44, 150, 8, heapPct);
     target->setCursor(5, 72);
     target->print("Flash:");
     target->setCursor(5, 84);
-    target->printf("%d/%dKB", flashUsed/1024, flashSize/1024);
-    target->setCursor(5, 96);
-    target->printf("(%d%%)", flashPct);
-    drawUsageBar(target, 5, 108, 150, 8, flashPct);
+    target->printf("%d/%dKB (%d%%)", flashUsed/1024, flashSize/1024, flashPct);
+    //target->setCursor(5, 96);
+    //target->printf("", );
+    drawUsageBar(target, 5, 96, 150, 8, flashPct);
     
     // WiFi box
     target->fillRect(160, 0, 160, 120, BOX_BG);
@@ -534,6 +535,43 @@ void handleTouch() {
   }
 }
 
+void drawSplashScreen() {
+  tft.fillScreen(BG_COLOR);
+  
+  // Draw Title
+  tft.setTextColor(TEXT_COLOR);
+  tft.setTextSize(2);
+  int16_t x1, y1;
+  uint16_t w, h;
+  tft.getTextBounds("ESP32-C3", 0, 0, &x1, &y1, &w, &h);
+  tft.setCursor((320 - w) / 2, 80);
+  tft.print("ESP32-C3");
+  
+  tft.setTextSize(1);
+  tft.getTextBounds("Starting...", 0, 0, &x1, &y1, &w, &h);
+  tft.setCursor((320 - w) / 2, 110);
+  tft.print("Starting...");
+  
+  // Draw Progress Bar
+  int barW = 200;
+  int barH = 12;
+  int barX = (320 - barW) / 2;
+  int barY = 140;
+  
+  tft.drawRect(barX, barY, barW, barH, BORDER_COLOR);
+  
+  // Animate progress
+  for(int i=0; i<=100; i+=2) {
+    int fillW = (barW - 4) * i / 100;
+    if (fillW > 0) {
+      tft.fillRect(barX + 2, barY + 2, fillW, barH - 4, HIGHLIGHT);
+    }
+    delay(15); // Simulate loading time (total ~750ms)
+  }
+  
+  delay(200);
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
@@ -546,6 +584,12 @@ void setup() {
   if (!ts.begin()) {
     Serial.println("Touch failed!");
   }
+
+  // Draw Image Splash
+  tft.drawRGBBitmap(0, 0, splash_image_rgb565, 320, 240);
+  delay(3000);
+
+  drawSplashScreen();
 
   setupWifi();
   
